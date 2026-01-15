@@ -45,7 +45,7 @@ def get_model():
         raise
 
 
-async def get_agent(assistant_id: str = "telegram-agent"):
+async def get_agent(assistant_id: str = "agent"):
     """Get or create an agent instance."""
     if assistant_id in _agent_cache:
         return _agent_cache[assistant_id]
@@ -139,7 +139,7 @@ async def execute_task_telegram(
         session: The session state
         adapter: The TelegramAdapter for messaging
     """
-    assistant_id = "telegram-agent"
+    assistant_id = "agent"
     
     try:
         # Import here to allow graceful fallback

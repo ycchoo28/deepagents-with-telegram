@@ -129,7 +129,7 @@ async def skills_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         response = (
             "📚 *Skills System*\n\n"
             "Skills are loaded from:\n"
-            "• User: `~/.deepagents/telegram-agent/skills/`\n"
+            "• User: `~/.deepagents/agent/skills/`\n"
             "• Project: `.deepagents/skills/`\n\n"
             "Each skill is a directory with a `SKILL.md` file."
         )
