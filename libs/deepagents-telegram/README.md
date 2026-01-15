@@ -2,6 +2,31 @@
 
 A Telegram bot interface for DeepAgents, providing the same capabilities as the CLI including skills, memory, and human-in-the-loop (HITL) approval.
 
+## Quick Start
+
+```bash
+# 1. Navigate to the telegram bot directory
+cd agent/deepagents-with-telegram/libs/deepagents-telegram
+
+# 2. Copy and configure environment file
+cp .env.example .env
+# Edit .env with your TELEGRAM_BOT_TOKEN and LLM API key
+
+# 3. Install dependencies (from deepagents-with-telegram directory)
+cd ../..
+pip install -e libs/deepagents -e libs/deepagents-cli -e libs/deepagents-telegram
+
+# 4. Run the bot
+cd libs/deepagents-telegram
+export $(cat .env | grep -v '^#' | xargs) && deepagents-telegram
+```
+
+**Minimum required `.env` configuration:**
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
+ANTHROPIC_API_KEY=your_anthropic_key  # or OPENAI_API_KEY
+```
+
 ## Features
 
 - Chat with DeepAgents AI assistant via Telegram
@@ -15,10 +40,10 @@ A Telegram bot interface for DeepAgents, providing the same capabilities as the 
 ## Installation
 
 ```bash
-# From the project root
-cd /path/to/deepagents-master
+# From the deepagents-with-telegram directory
+cd agent/deepagents-with-telegram
 
-# Create virtual environment
+# Create virtual environment (optional but recommended)
 python3.11 -m venv venv
 source venv/bin/activate
 
@@ -26,6 +51,9 @@ source venv/bin/activate
 pip install -e libs/deepagents
 pip install -e libs/deepagents-cli
 pip install -e libs/deepagents-telegram
+
+# Or install all at once
+pip install -e libs/deepagents -e libs/deepagents-cli -e libs/deepagents-telegram
 ```
 
 ## Configuration
@@ -124,11 +152,20 @@ ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
 ### Start the Bot
 
 ```bash
-# Using the entry point
-deepagents-telegram
+# Navigate to the telegram package directory
+cd agent/deepagents-with-telegram/libs/deepagents-telegram
 
-# Or run directly
-python -m deepagents_telegram.main
+# Load environment and run
+export $(cat .env | grep -v '^#' | xargs) && deepagents-telegram
+
+# Or run directly with python
+export $(cat .env | grep -v '^#' | xargs) && python -m deepagents_telegram.main
+```
+
+### One-liner (from project root)
+
+```bash
+cd agent/deepagents-with-telegram/libs/deepagents-telegram && export $(cat .env | grep -v '^#' | xargs) && deepagents-telegram
 ```
 
 ### Bot Commands
