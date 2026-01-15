@@ -10,33 +10,64 @@ A Telegram bot interface for DeepAgents, providing the same capabilities as the 
 - Human-in-the-loop approval for tool executions
 - Thread/conversation management
 - Shell command execution
+- **Custom OpenAI-compatible API support** (DeepSeek, Ollama, vLLM, LM Studio, etc.)
 
 ## Installation
 
 ```bash
-# From the libs directory
-cd libs/deepagents-telegram
-pip install -e .
+# From the project root
+cd /path/to/deepagents-master
 
-# Or install with dependencies
-pip install -e ".[dev]"
+# Create virtual environment
+python3.11 -m venv venv
+source venv/bin/activate
+
+# Install dependencies in order
+pip install -e libs/deepagents
+pip install -e libs/deepagents-cli
+pip install -e libs/deepagents-telegram
 ```
 
 ## Configuration
 
-### Required Environment Variables
+### Quick Setup
 
+1. Copy the example environment file:
 ```bash
-# Telegram bot token (get from @BotFather)
-export TELEGRAM_BOT_TOKEN="your_bot_token_here"
-
-# LLM API key (at least one required)
-export ANTHROPIC_API_KEY="your_key"
-# or
-export OPENAI_API_KEY="your_key"
-# or
-export GOOGLE_API_KEY="your_key"
+cd libs/deepagents-telegram
+cp .env.example .env
 ```
+
+2. Edit `.env` with your settings (see below)
+
+3. Run the bot:
+```bash
+deepagents-telegram
+```
+
+### Environment Variables
+
+#### Required
+
+| Variable | Description |
+|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | Your Telegram bot token from @BotFather |
+| `OPENAI_API_KEY` | API key for OpenAI or compatible API (at least one LLM key required) |
+
+#### Optional - Custom OpenAI-Compatible API
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_BASE` | Custom API endpoint URL (e.g., `http://localhost:8000/v1`) |
+| `OPENAI_PROVIDER` | Force provider detection: `openai`, `anthropic`, or `google` |
+| `OPENAI_MODEL` | Custom model name (e.g., `deepseek-chat`, `llama3:70b`) |
+
+#### Alternative LLM Providers
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic API key (for Claude models) |
+| `GOOGLE_API_KEY` | Google API key (for Gemini models) |
 
 ### Getting a Telegram Bot Token
 
@@ -44,6 +75,49 @@ export GOOGLE_API_KEY="your_key"
 2. Send `/newbot` command
 3. Follow the prompts to create your bot
 4. Copy the token provided
+
+### Example Configurations
+
+#### Standard OpenAI
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token
+OPENAI_API_KEY=sk-xxx
+OPENAI_MODEL=gpt-4o
+```
+
+#### DeepSeek
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token
+OPENAI_API_KEY=sk-xxx
+OPENAI_API_BASE=https://api.deepseek.com/v1
+OPENAI_PROVIDER=openai
+OPENAI_MODEL=deepseek-chat
+```
+
+#### Ollama (Local)
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token
+OPENAI_API_KEY=ollama
+OPENAI_API_BASE=http://localhost:11434/v1
+OPENAI_PROVIDER=openai
+OPENAI_MODEL=llama3:70b
+```
+
+#### vLLM / LM Studio / LocalAI
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token
+OPENAI_API_KEY=your_key_or_dummy
+OPENAI_API_BASE=http://localhost:8000/v1
+OPENAI_PROVIDER=openai
+OPENAI_MODEL=your-model-name
+```
+
+#### Anthropic Claude
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token
+ANTHROPIC_API_KEY=sk-ant-xxx
+ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+```
 
 ## Usage
 
@@ -140,6 +214,37 @@ deepagents_telegram/
     ├── messages.py      # Text message handler
     └── callbacks.py     # Inline keyboard callbacks
 ```
+
+## Troubleshooting
+
+### 404 Error - Model Not Found
+
+If you see `Error code: 404 - {'detail': 'Not Found'}`:
+
+1. **Check your base URL** - Make sure it ends with `/v1`:
+   ```bash
+   # Wrong
+   OPENAI_API_BASE=http://localhost:8000
+   
+   # Correct
+   OPENAI_API_BASE=http://localhost:8000/v1
+   ```
+
+2. **Verify the model name** - Test with curl:
+   ```bash
+   curl http://localhost:8000/v1/models
+   ```
+
+3. **Set OPENAI_PROVIDER** - Required for non-standard model names:
+   ```bash
+   OPENAI_PROVIDER=openai
+   ```
+
+### Provider Detection Failed
+
+If you see "Could not detect provider from model name":
+
+Set `OPENAI_PROVIDER=openai` to force OpenAI-compatible mode for custom model names.
 
 ## Limitations
 
