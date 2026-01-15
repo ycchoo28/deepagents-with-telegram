@@ -76,8 +76,11 @@ def main() -> None:
         print("Set one of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY")
         print()
     
-    # Create application
-    application = Application.builder().token(token).build()
+    # Create application with concurrent updates enabled
+    # This is critical for HITL approval flow - the message handler awaits user approval,
+    # and the callback handler (for approval buttons) must run concurrently to resolve it.
+    # Without concurrent_updates=True, handlers block sequentially, causing a deadlock.
+    application = Application.builder().token(token).concurrent_updates(True).build()
     
     # Add command handlers
     application.add_handler(CommandHandler("start", start_command))

@@ -208,7 +208,6 @@ async def _run_agent_loop(
     try:
         while True:
             interrupt_occurred = False
-            hitl_response: dict = {}
             pending_interrupts: dict = {}
             
             async for chunk in agent.astream(
@@ -312,75 +311,134 @@ async def _run_agent_loop(
                 await adapter.mount_message(accumulated_text)
             
             # Handle HITL interrupts
+            # The HITL middleware expects resume={interrupt_id: {"decisions": [...]}, ...}
+            # where each decision is {"type": "approve"} or {"type": "reject", "message": "..."}
+            # IMPORTANT: The number of decisions must match the number of action_requests per interrupt
             if interrupt_occurred and pending_interrupts:
+                hitl_response: dict[str, dict] = {}
+                any_rejected = False
+                
                 for interrupt_id, hitl_request in pending_interrupts.items():
-                    # Check auto-approve
-                    if session.auto_approve:
-                        hitl_response[interrupt_id] = {"type": "approve"}
+                    # Extract action_requests from HITLRequest
+                    # HITLRequest has action_requests: list[ActionRequest]
+                    # We need to generate one decision per action_request
+                    action_requests = None
+                    if isinstance(hitl_request, dict):
+                        action_requests = hitl_request.get("action_requests", [])
+                    elif hasattr(hitl_request, "action_requests"):
+                        action_requests = hitl_request.action_requests
+                    
+                    if not action_requests:
+                        # Fallback to old structure for compatibility
+                        action = getattr(hitl_request, "action", None)
+                        if action is None:
+                            action = hitl_request.get("action", {}) if isinstance(hitl_request, dict) else {}
+                        action_requests = [action] if action else []
+                    
+                    # Edge case: no action requests found
+                    if not action_requests:
+                        logger.warning(f"HITLRequest has no action_requests: {hitl_request}")
+                        # Provide a default approval to avoid middleware errors
+                        hitl_response[interrupt_id] = {"decisions": [{"type": "approve"}]}
                         continue
                     
-                    # Extract action details from HITLRequest
-                    action = getattr(hitl_request, "action", None)
-                    if action is None:
-                        action = hitl_request.get("action", {}) if isinstance(hitl_request, dict) else {}
+                    decisions: list[dict] = []
                     
-                    if hasattr(action, "name"):
-                        action_name = action.name
-                        action_args = action.args if hasattr(action, "args") else {}
-                    elif isinstance(action, dict):
-                        action_name = action.get("name", "unknown")
-                        action_args = action.get("args", {})
-                    else:
-                        action_name = "unknown"
-                        action_args = {}
+                    # Check auto-approve - approve all actions
+                    if session.auto_approve:
+                        decisions = [{"type": "approve"} for _ in action_requests]
+                        hitl_response[interrupt_id] = {"decisions": decisions}
+                        continue
                     
-                    # Request approval from user
-                    action_request = {
-                        "name": action_name,
-                        "args": action_args,
-                        "description": getattr(hitl_request, "description", ""),
-                    }
-                    
-                    try:
-                        result = await asyncio.wait_for(
-                            adapter.request_approval(action_request, assistant_id),
-                            timeout=300.0,  # 5 minute timeout
-                        )
+                    # Process each action request
+                    for idx, action in enumerate(action_requests):
+                        if isinstance(action, dict):
+                            action_name = action.get("name", "unknown")
+                            action_args = action.get("args", {})
+                        elif hasattr(action, "name"):
+                            action_name = action.name
+                            action_args = getattr(action, "args", {})
+                        else:
+                            action_name = "unknown"
+                            action_args = {}
                         
-                        if result.get("type") == "auto_approve_all":
-                            session.enable_auto_approve()
-                            hitl_response[interrupt_id] = {"type": "approve"}
-                            await adapter.mount_message(
-                                "Auto-approve enabled for this session.",
-                                msg_type="system",
+                        # Request approval from user for this action
+                        action_request_info = {
+                            "name": action_name,
+                            "args": action_args,
+                            "description": getattr(hitl_request, "description", ""),
+                        }
+                        
+                        try:
+                            result = await asyncio.wait_for(
+                                adapter.request_approval(action_request_info, assistant_id),
+                                timeout=300.0,  # 5 minute timeout
                             )
-                        elif result.get("type") == "edit":
-                            # User edited the command - modify the action args
-                            edited_value = result.get("value", "")
-                            if action_name in ("shell", "execute") and edited_value:
-                                # Create modified action with edited command
-                                hitl_response[interrupt_id] = {
-                                    "type": "approve",
-                                    # Note: The edit modifies what gets executed
-                                    # We approve but the agent should use the edited value
-                                }
+                            
+                            if result.get("type") == "auto_approve_all":
+                                session.enable_auto_approve()
+                                # Approve this action
+                                decisions.append({"type": "approve"})
+                                # Approve all remaining actions in this interrupt
+                                remaining_count = len(action_requests) - len(decisions)
+                                for _ in range(remaining_count):
+                                    decisions.append({"type": "approve"})
                                 await adapter.mount_message(
-                                    f"Executing edited command: {edited_value}",
+                                    "Auto-approve enabled for this session.",
                                     msg_type="system",
                                 )
+                                break  # Exit inner loop, continue to next interrupt
+                                
+                            elif result.get("type") == "edit":
+                                # User edited the command
+                                edited_value = result.get("value", "")
+                                if action_name in ("shell", "execute") and edited_value:
+                                    # Modify the action args with the edited command
+                                    # Note: We update the original action so the agent uses it
+                                    if isinstance(action, dict):
+                                        action["args"] = {"command": edited_value}
+                                    elif hasattr(action, "args"):
+                                        action.args = {"command": edited_value}
+                                    
+                                    decisions.append({"type": "approve"})
+                                    await adapter.mount_message(
+                                        f"Executing edited command: `{edited_value}`",
+                                        msg_type="system",
+                                    )
+                                else:
+                                    decisions.append({"type": "approve"})
+                                    
+                            elif result.get("type") == "reject":
+                                decisions.append({
+                                    "type": "reject",
+                                    "message": "Action rejected by user",
+                                })
+                                any_rejected = True
                             else:
-                                hitl_response[interrupt_id] = {"type": "approve"}
-                        else:
-                            hitl_response[interrupt_id] = result
-                            
-                    except asyncio.TimeoutError:
-                        hitl_response[interrupt_id] = {"type": "reject"}
-                        await adapter.mount_message(
-                            "Approval timed out - action rejected.",
-                            msg_type="system",
-                        )
+                                decisions.append({"type": "approve"})
+                                
+                        except asyncio.TimeoutError:
+                            decisions.append({
+                                "type": "reject",
+                                "message": "Approval timed out",
+                            })
+                            any_rejected = True
+                            await adapter.mount_message(
+                                "Approval timed out - action rejected.",
+                                msg_type="system",
+                            )
+                    
+                    hitl_response[interrupt_id] = {"decisions": decisions}
                 
-                # Resume with responses
+                # If any action was rejected, inform user and stop
+                if any_rejected:
+                    await adapter.mount_message(
+                        "Command rejected. Tell me what you'd like instead.",
+                        msg_type="system",
+                    )
+                    break
+                
+                # Resume with responses in the format expected by HITL middleware
                 stream_input = Command(resume=hitl_response)
                 accumulated_text = ""
                 last_sent_length = 0

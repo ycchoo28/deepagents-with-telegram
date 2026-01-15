@@ -344,7 +344,9 @@ class TelegramAdapter:
             decision: One of "approve", "reject", "auto_approve_all", "edit"
             edit_value: If decision is "edit", the new value to use
         """
+        logger.debug(f"resolve_approval called with decision={decision}, has_pending={self._pending_approval is not None}")
         if self._pending_approval and not self._pending_approval.done():
+            logger.debug(f"Setting result for pending approval: {decision}")
             if decision == "auto_approve_all":
                 self._pending_approval.set_result({"type": "auto_approve_all"})
             elif decision == "reject":
@@ -357,6 +359,8 @@ class TelegramAdapter:
                 pass
             else:
                 self._pending_approval.set_result({"type": "approve"})
+        else:
+            logger.warning(f"resolve_approval: No pending approval or already done")
     
     def set_waiting_for_edit(self, waiting: bool) -> None:
         """Set whether we're waiting for an edited command."""

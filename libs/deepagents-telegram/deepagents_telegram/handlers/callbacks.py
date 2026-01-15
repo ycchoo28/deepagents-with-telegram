@@ -59,6 +59,7 @@ async def handle_approval_callback(
     
     # Get the session and resolve the pending approval
     session = get_session(chat_id)
+    logger.debug(f"Session found: {session is not None}, has_adapter: {session.adapter is not None if session else False}")
     
     if not session:
         await query.edit_message_text(
@@ -73,10 +74,13 @@ async def handle_approval_callback(
         return
     
     if not session.adapter.has_pending_approval():
+        logger.warning(f"No pending approval for chat {chat_id}")
         await query.edit_message_text(
             "This approval request has expired.",
         )
         return
+    
+    logger.debug(f"Resolving approval: {decision}")
     
     # Handle edit request
     if decision == "edit":
